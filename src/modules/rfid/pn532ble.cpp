@@ -27,7 +27,7 @@ void Pn532ble::setup()
 
 bool Pn532ble::connect()
 {
-    displayInfo("Turn on PN532 BLE Devices", true);
+    displayInfo("Power on PN532 BLE", true);
 
     displayBanner();
     padprintln("");
@@ -35,20 +35,20 @@ bool Pn532ble::connect()
 
     if (!pn532_ble.searchForDevice())
     {
-        displayError("PN532 BLE Not found");
+        displayError("Not found");
         delay(1000);
         return false;
     }
 
     if (!pn532_ble.connectToDevice())
     {
-        displayError("Failed to connect");
+        displayError("Connect failed");
         delay(1000);
         return false;
     }
     std::string deviceName = pn532_ble.getName();
-    displaySuccess(String(deviceName.c_str()) + " Connected");
-    delay(1000);
+    displaySuccess("Connected");
+    delay(800);
 
     return true;
 }
@@ -75,9 +75,7 @@ void Pn532ble::selectMode()
     options = {
         {"Tag Scan", [&]()
          { setMode(HF_SCAN_MODE); }},
-        {"Back", [&]() {
-                returnToMenu = true;
-        }},
+        {"Back", [&]() { setMode(GET_FW_MODE); }},
     };
     delay(200);
     loopOptions(options);
@@ -116,7 +114,7 @@ void Pn532ble::showDeviceInfo()
     bool res = pn532_ble.getVersion();
     if (!res)
     {
-        displayError("Failed to get version");
+        displayError("Get version failed");
         delay(1000);
         return;
     }
@@ -154,6 +152,8 @@ void Pn532ble::hf14aScan()
         padprintln("UID:  " + tagInfo.uid_hex);
         padprintln("ATQA: " + tagInfo.atqa_hex);
         padprintln("SAK:  " + tagInfo.sak_hex);
+        bool isGen1A = pn532_ble.isGen1A(); 
+        padprintln("Gen1A: " + String(isGen1A ? "Yes" : "No"));
     }
 }
 
