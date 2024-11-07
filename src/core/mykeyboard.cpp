@@ -10,6 +10,11 @@
   CYD28_TouchR touch(CYD28_DISPLAY_HOR_RES_MAX, CYD28_DISPLAY_VER_RES_MAX);
 #endif
 
+#define PREV 0
+#define SEL 1
+#define NEXT 2
+#define ALL 3
+
 #if defined(HAS_TOUCH)
 struct box_t
 {
@@ -26,7 +31,7 @@ struct box_t
   {
     for (int i = 0; i < 8; ++i)
     {
-      tft.fillRect(x, y, w, h,BGCOLOR);
+      tft.fillRect(x, y, w, h,bruceConfig.bgColor);
     }
   }
   void draw(void)
@@ -48,10 +53,6 @@ struct box_t
 
 static constexpr std::size_t box_count = 52;
 static box_t box_list[box_count];
-#define PREV 0
-#define SEL 1
-#define NEXT 2
-#define ALL 3
 
 #if defined(M5STACK) && !defined(CORE2)
 bool menuPress(int bot) {
@@ -63,9 +64,9 @@ bool menuPress(int bot) {
   M5.update();
   auto t = M5.Touch.getDetail();
   if (t.isPressed() || t.isHolding()) {
-    //if(rotation==3) t.x = WIDTH-t.x;
-    //else if (rotation==1) t.y = (HEIGHT+20)-t.y;
-    if(t.y>(HEIGHT) && (t.x>terco*bot && t.x<terco*(1+bot) || bot==ALL)) { 
+    //if(bruceConfig.rotation==3) t.x = WIDTH-t.x;
+    //else if (bruceConfig.rotation==1) t.y = (HEIGHT+20)-t.y;
+    if(t.y>(HEIGHT) && (t.x>terco*bot && t.x<terco*(1+bot) || bot==ALL)) {
       t.x=WIDTH+1;
       t.y=HEIGHT+11;
       return true;
@@ -80,16 +81,16 @@ bool menuPress(int bot) {
   //1 - Sel
   //2 - next
   int terco=WIDTH/3;
-  if (touch.touched()) { //touch.tirqTouched() && 
+  if (touch.touched()) { //touch.tirqTouched() &&
     auto t = touch.getPointScaled();
     t = touch.getPointScaled();
     //log_i("Touchscreen Pressed at x=%d, y=%d, z=%d", t.x,t.y,t.z);
-        if(rotation==3) { 
+        if(bruceConfig.rotation==3) {
           t.y = (HEIGHT+20)-t.y;
           t.x = WIDTH-t.x;
         }
 
-    if(t.y>(HEIGHT) && ((t.x>terco*bot && t.x<terco*(1+bot)) || bot==ALL)) { 
+    if(t.y>(HEIGHT) && ((t.x>terco*bot && t.x<terco*(1+bot)) || bot==ALL)) {
       t.x=WIDTH+1;
       t.y=HEIGHT+11;
       return true;
@@ -99,6 +100,51 @@ bool menuPress(int bot) {
 #endif
 
 #endif
+
+#if defined(T_EMBED)
+  #if defined(T_EMBED_1101)
+    // Power handler for battery detection
+    XPowersPPM PPM;
+  #endif
+  //RotaryEncoder encoder(ENCODER_INA, ENCODER_INB, RotaryEncoder::LatchMode::TWO03);
+  RotaryEncoder *encoder = nullptr;
+  int _new_pos = 0;
+  int _last_pos = 0;
+  int _last_dir = 0;
+  IRAM_ATTR void checkPosition()
+    {
+      encoder->tick(); // just call tick() to check the state.
+      _last_dir = (int)encoder->getDirection();
+      _last_pos = _new_pos;
+      _new_pos = encoder->getPosition();
+    }
+
+  bool menuPress(int bot){
+    //0 - prev
+    //1 - Sel
+    //2 - next
+    //3 - any
+    if((bot==0 || bot==3) && _last_dir>0) {
+      _last_dir=0;
+      return true;
+    }
+    if((bot==2 || bot==3) && _last_dir<0) {
+      _last_dir=0;
+      return true;
+    }
+    if((bot==1 || bot==3) && digitalRead(SEL_BTN)==BTN_ACT) {
+      _last_dir=0;
+      return true;
+    }
+    if(bot==3 && digitalRead(BK_BTN)==BTN_ACT) {
+      _last_dir=0;
+      return true;
+    }
+
+    return false;
+  }
+#endif
+
 /* Verifies Upper Btn to go to previous item */
 
 bool checkNextPress(){
@@ -111,7 +157,7 @@ bool checkNextPress(){
   #elif defined(M5STACK)
     M5.update();
     if(menuPress(NEXT))
-  #elif defined(CYD)
+  #elif defined(CYD) || defined(T_EMBED)
     if(menuPress(NEXT))     
   #elif ! defined(HAS_SCREEN)
     // always return false
@@ -143,12 +189,12 @@ bool checkPrevPress() {
   #elif defined(M5STACK)
     M5.update();
     if(menuPress(PREV))
-  #elif defined(CYD)
+  #elif defined(CYD) || defined(T_EMBED)
     if(menuPress(PREV))     
   #elif ! defined(HAS_SCREEN)
     // always return false
     if(false)
-  #else 
+  #else
     if(digitalRead(UP_BTN)==LOW)
   #endif
   {
@@ -173,11 +219,11 @@ bool checkSelPress(){
     if(false)
   #elif defined(CORE2) || defined(CORE)
     M5.update();
-    if(M5.BtnB.isPressed())    
+    if(M5.BtnB.isPressed())
   #elif defined(M5STACK)
     M5.update();
     if(menuPress(SEL))
-  #elif defined(CYD)
+  #elif defined(CYD) || defined(T_EMBED)
     if(menuPress(SEL))     
   #else
     if(digitalRead(SEL_BTN)==LOW)
@@ -211,9 +257,11 @@ bool checkEscPress(){
     M5.update();
     if(menuPress(PREV))
   #elif defined(CYD)
-    if(menuPress(PREV))     
+    if(menuPress(PREV))
+  #elif defined(T_EMBED)
+    if(digitalRead(BK_BTN)==LOW)
   #else
-    if(digitalRead(UP_BTN)==LOW)
+    if(digitalRead(UP_BTN)==BTN_ACT)
   #endif
   {
     if(wakeUpScreen()){
@@ -232,11 +280,11 @@ bool checkAnyKeyPress() {
     if(Keyboard.isPressed())
   #elif defined(CORE2) || defined(CORE)
     M5.update();
-    if(M5.BtnA.isPressed() || M5.BtnB.isPressed() || M5.BtnC.isPressed())    
+    if(M5.BtnA.isPressed() || M5.BtnB.isPressed() || M5.BtnC.isPressed())
   #elif defined(M5STACK)
     M5.update();
     if(menuPress(ALL))    
-  #elif defined(CYD)
+  #elif defined(CYD) || defined(T_EMBED)
     if(menuPress(ALL)) 
   #elif ! defined(HAS_SCREEN)
     // always return false
@@ -392,7 +440,7 @@ String keyboard(String mytext, int maxSize, String msg) {
     for(y2=0; y2<4; y2++) {
       box_list[k].key=keys[y2][x2][0];
       box_list[k].key_sh=keys[y2][x2][1];
-      box_list[k].color = ~BGCOLOR;
+      box_list[k].color = ~bruceConfig.bgColor;
       box_list[k].x=x2*_x;
       box_list[k].y=y2*_y+54;
       box_list[k].w=_x;
@@ -403,7 +451,7 @@ String keyboard(String mytext, int maxSize, String msg) {
   // OK
   box_list[k].key=' ';
   box_list[k].key_sh=' ';
-  box_list[k].color = ~BGCOLOR;
+  box_list[k].color = ~bruceConfig.bgColor;
   box_list[k].x=0;
   box_list[k].y=0;
   box_list[k].w=53;
@@ -412,7 +460,7 @@ String keyboard(String mytext, int maxSize, String msg) {
   // CAP
   box_list[k].key=' ';
   box_list[k].key_sh=' ';
-  box_list[k].color = ~BGCOLOR;
+  box_list[k].color = ~bruceConfig.bgColor;
   box_list[k].x=55;
   box_list[k].y=0;
   box_list[k].w=50;
@@ -421,7 +469,7 @@ String keyboard(String mytext, int maxSize, String msg) {
   // DEL
   box_list[k].key=' ';
   box_list[k].key_sh=' ';
-  box_list[k].color = ~BGCOLOR;
+  box_list[k].color = ~bruceConfig.bgColor;
   box_list[k].x=107;
   box_list[k].y=0;
   box_list[k].w=50;
@@ -430,7 +478,7 @@ String keyboard(String mytext, int maxSize, String msg) {
   // SPACE
   box_list[k].key=' ';
   box_list[k].key_sh=' ';
-  box_list[k].color = ~BGCOLOR;
+  box_list[k].color = ~bruceConfig.bgColor;
   box_list[k].x=159;
   box_list[k].y=0;
   box_list[k].w=WIDTH-164;
@@ -447,40 +495,40 @@ String keyboard(String mytext, int maxSize, String msg) {
   delay(200);
   int cX =0;
   int cY =0;
-  tft.fillScreen(BGCOLOR);
+  tft.fillScreen(bruceConfig.bgColor);
   while(1) {
     if(redraw) {
       tft.setCursor(0,0);
-      tft.setTextColor(TFT_WHITE, BGCOLOR);
+      tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
       tft.setTextSize(FM);
 
       //Draw the rectangles
       if(y<0) {
-        tft.fillRect(0,1,WIDTH,22,BGCOLOR);
+        tft.fillRect(0,1,WIDTH,22,bruceConfig.bgColor);
         tft.drawRect(7,2,46,20,TFT_WHITE);       // Ok Rectangle
         tft.drawRect(55,2,50,20,TFT_WHITE);      // CAP Rectangle
         tft.drawRect(107,2,50,20,TFT_WHITE);     // DEL Rectangle
         tft.drawRect(159,2,74,20,TFT_WHITE);     // SPACE Rectangle
-        tft.drawRect(3,32,WIDTH-3,20,FGCOLOR); // mystring Rectangle
+        tft.drawRect(3,32,WIDTH-3,20,bruceConfig.priColor); // mystring Rectangle
 
 
-        if(x==0 && y==-1) { tft.setTextColor(BGCOLOR, TFT_WHITE); tft.fillRect(7,2,50,20,TFT_WHITE); }
-        else tft.setTextColor(TFT_WHITE, BGCOLOR);
+        if(x==0 && y==-1) { tft.setTextColor(bruceConfig.bgColor, TFT_WHITE); tft.fillRect(7,2,50,20,TFT_WHITE); }
+        else tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
         tft.drawString("OK", 18, 4);
 
 
-        if(x==1 && y==-1) { tft.setTextColor(BGCOLOR, TFT_WHITE); tft.fillRect(55,2,50,20,TFT_WHITE); }
+        if(x==1 && y==-1) { tft.setTextColor(bruceConfig.bgColor, TFT_WHITE); tft.fillRect(55,2,50,20,TFT_WHITE); }
         else if(caps) { tft.fillRect(55,2,50,20,TFT_DARKGREY); tft.setTextColor(TFT_WHITE, TFT_DARKGREY); }
-        else tft.setTextColor(TFT_WHITE, BGCOLOR);
+        else tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
         tft.drawString("CAP", 64, 4);
 
 
-        if(x==2 && y==-1) { tft.setTextColor(BGCOLOR, TFT_WHITE); tft.fillRect(107,2,50,20,TFT_WHITE); }
-        else tft.setTextColor(TFT_WHITE, BGCOLOR);
+        if(x==2 && y==-1) { tft.setTextColor(bruceConfig.bgColor, TFT_WHITE); tft.fillRect(107,2,50,20,TFT_WHITE); }
+        else tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
         tft.drawString("DEL", 115, 4);
 
-        if(x>2 && y==-1) { tft.setTextColor(BGCOLOR, TFT_WHITE); tft.fillRect(159,2,74,20,TFT_WHITE); }
-        else tft.setTextColor(TFT_WHITE, BGCOLOR);
+        if(x>2 && y==-1) { tft.setTextColor(bruceConfig.bgColor, TFT_WHITE); tft.fillRect(159,2,74,20,TFT_WHITE); }
+        else tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
         tft.drawString("SPACE", 168, 4);
       }
 
@@ -491,7 +539,7 @@ String keyboard(String mytext, int maxSize, String msg) {
       tft.setTextSize(FM);
 
       // reseta o quadrado do texto
-      if (mytext.length() == 19 || mytext.length() == 20 || mytext.length() == 38 || mytext.length() == 39) tft.fillRect(3,32,WIDTH-3,20,BGCOLOR); // mystring Rectangle
+      if (mytext.length() == 19 || mytext.length() == 20 || mytext.length() == 38 || mytext.length() == 39) tft.fillRect(3,32,WIDTH-3,20,bruceConfig.bgColor); // mystring Rectangle
       // escreve o texto
       tft.setTextColor(TFT_WHITE);
       if(mytext.length()>19) {
@@ -507,27 +555,27 @@ String keyboard(String mytext, int maxSize, String msg) {
         tft.drawString(mytext, 5, 34);
       }
       //desenha o retangulo colorido
-      tft.drawRect(3,32,WIDTH-3,20,FGCOLOR); // mystring Rectangle
+      tft.drawRect(3,32,WIDTH-3,20,bruceConfig.priColor); // mystring Rectangle
 
 
-      tft.setTextColor(TFT_WHITE, BGCOLOR);
+      tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
       tft.setTextSize(FM);
 
 
       for(i=0;i<4;i++) {
         for(j=0;j<12;j++) {
           //use last coordenate to paint only this letter
-          if(x2==j && y2==i) { tft.setTextColor(~BGCOLOR, BGCOLOR); tft.fillRect(j*_x,i*_y+54,_x,_y,BGCOLOR);}
+          if(x2==j && y2==i) { tft.setTextColor(~bruceConfig.bgColor, bruceConfig.bgColor); tft.fillRect(j*_x,i*_y+54,_x,_y,bruceConfig.bgColor);}
           /* If selected, change font color and draw Rectangle*/
-          if(x==j && y==i) { tft.setTextColor(BGCOLOR, ~BGCOLOR); tft.fillRect(j*_x,i*_y+54,_x,_y,~BGCOLOR);}
-          
-                    
+          if(x==j && y==i) { tft.setTextColor(bruceConfig.bgColor, ~bruceConfig.bgColor); tft.fillRect(j*_x,i*_y+54,_x,_y,~bruceConfig.bgColor);}
+
+
           /* Print the letters */
           if(!caps) tft.drawChar(keys[i][j][0], (j*_x+_xo), (i*_y+56));
           else tft.drawChar(keys[i][j][1], (j*_x+_xo), (i*_y+56));
 
           /* Return colors to normal to print the other letters */
-          if(x==j && y==i) { tft.setTextColor(~BGCOLOR, BGCOLOR); }
+          if(x==j && y==i) { tft.setTextColor(~bruceConfig.bgColor, bruceConfig.bgColor); }
         }
       }
       // save actual key coordenate
@@ -565,7 +613,7 @@ String keyboard(String mytext, int maxSize, String msg) {
       Keyboard_Class::KeysState status = Keyboard.keysState();
 
       bool Fn = status.fn;
-      if(Fn && Keyboard.isKeyPressed('`')) { 
+      if(Fn && Keyboard.isKeyPressed('`')) {
         mytext = _mytext; // return the old name
         returnToMenu=true;// try to stop all the code
         break;
@@ -588,7 +636,7 @@ String keyboard(String mytext, int maxSize, String msg) {
         if(mytext.length()>19) { tft.setTextSize(FP); fS=FP; }
         else tft.setTextSize(FM);
         tft.setCursor((cX-fS*LW),cY);
-        tft.setTextColor(FGCOLOR,BGCOLOR);
+        tft.setTextColor(bruceConfig.priColor,bruceConfig.bgColor);
         tft.print(" ");
         tft.setTextColor(TFT_WHITE, 0x5AAB);
         tft.setCursor(cX-fS*LW,cY);
@@ -604,6 +652,54 @@ String keyboard(String mytext, int maxSize, String msg) {
     }
     if(checkSelPress()) break;
 
+  #elif defined(T_DECK)
+
+    char keyValue = 0;
+    Wire.requestFrom(LILYGO_KB_SLAVE_ADDRESS, 1);
+    while (Wire.available() > 0) {
+        keyValue = Wire.read();
+    }
+    if (keyValue != (char)0x00) {
+        Serial.print("keyValue : ");
+        Serial.print(keyValue);
+        Serial.print(" -> Hex  0x");
+        Serial.println(keyValue,HEX);
+        resetDimmer();
+        tft.setCursor(cX,cY);
+
+        if(mytext.length()<maxSize && keyValue!=0x08 && keyValue!=0x0D) {
+          mytext += keyValue;
+          if(mytext.length()!=20 && mytext.length()!=20) tft.print(keyValue);
+          cX=tft.getCursorX();
+          cY=tft.getCursorY();
+          if(mytext.length()==20) redraw = true;
+          if(mytext.length()==39) redraw = true;
+        }
+        if (keyValue==0x08 && mytext.length() > 0) { // delete 0x08
+          // Handle backspace key
+          mytext.remove(mytext.length() - 1);
+          int fS=FM;
+          if(mytext.length()>19) { tft.setTextSize(FP); fS=FP; }
+          else tft.setTextSize(FM);
+          tft.setCursor((cX-fS*LW),cY);
+          tft.setTextColor(FGCOLOR,BGCOLOR);
+          tft.print(" "); 
+          tft.setTextColor(~BGCOLOR, 0x5AAB);
+          tft.setCursor(cX-fS*LW,cY);
+          cX=tft.getCursorX();
+          cY=tft.getCursorY();
+          if(mytext.length()==19) redraw = true;
+          if(mytext.length()==38) redraw = true;        
+        }
+        if (keyValue==0x0D) {
+          break;
+        }
+        //delay(200);
+    }
+    if(checkSelPress()) break;
+    
+    delay(5);
+
     #else
 
     int z=0;
@@ -614,7 +710,7 @@ String keyboard(String mytext, int maxSize, String msg) {
     #elif defined(M5STACK)
     M5.update();
     auto t = M5.Touch.getDetail();
-    if (t.isPressed() || t.isHolding()) 
+    if (t.isPressed() || t.isHolding())
     #elif defined(T_DISPLAY_S3)
     if (touch.read())
     #elif defined(CYD)
@@ -623,7 +719,7 @@ String keyboard(String mytext, int maxSize, String msg) {
     TouchPoint t;
     bool touched = tft.getTouch(&t.x, &t.y, 600);
 
-    if(rotation==3) { 
+    if(bruceConfig.rotation==3) {
       t.y = (HEIGHT+20)-t.y;
       t.x = WIDTH-t.x;
     }
@@ -632,20 +728,20 @@ String keyboard(String mytext, int maxSize, String msg) {
      {
       #if defined(T_DISPLAY_S3)
         auto t = touch.getPoint(0);
-        if(rotation==3) {
+        if(bruceConfig.rotation==3) {
           t.x = WIDTH-t.x;
-        } else if (rotation==1) {
+        } else if (bruceConfig.rotation==1) {
           t.y = (HEIGHT+20)-t.y;
         }
       #elif defined(CYD)
         auto t = touch.getPointScaled();
-        if(rotation==3) { 
+        if(bruceConfig.rotation==3) {
           t.y = (HEIGHT+20)-t.y;
           t.x = WIDTH-t.x;
         }
       #endif
       if (box_list[48].contain(t.x, t.y)) { break; }      // Ok
-      if (box_list[49].contain(t.x, t.y)) { caps=!caps; tft.fillRect(0,54,WIDTH,HEIGHT-54,BGCOLOR); goto THIS_END; } // CAP
+      if (box_list[49].contain(t.x, t.y)) { caps=!caps; tft.fillRect(0,54,WIDTH,HEIGHT-54,bruceConfig.bgColor); goto THIS_END; } // CAP
       if (box_list[50].contain(t.x, t.y)) goto DEL;               // DEL
       if (box_list[51].contain(t.x, t.y)) { mytext += box_list[51].key; goto ADD; } // SPACE
       for(k=0;k<48;k++){
@@ -659,11 +755,11 @@ String keyboard(String mytext, int maxSize, String msg) {
       #if defined(T_DISPLAY_S3)
       t.x=WIDTH+1;
       t.y=HEIGHT+11;
-      #endif      
+      #endif
       redraw=true;
       delay(200);
     }
-    #endif  
+    #endif
 
     if(checkSelPress())  {
       tft.setCursor(cX,cY);
@@ -678,7 +774,7 @@ String keyboard(String mytext, int maxSize, String msg) {
         if(mytext.length()>19) { tft.setTextSize(FP); fS=FP; }
         else tft.setTextSize(FM);
         tft.setCursor((cX-fS*LW),cY);
-        tft.setTextColor(FGCOLOR,BGCOLOR);
+        tft.setTextColor(bruceConfig.priColor,bruceConfig.bgColor);
         tft.print(" ");
         tft.setTextColor(TFT_WHITE, 0x5AAB);
         tft.setCursor(cX-fS*LW,cY);
@@ -700,10 +796,19 @@ String keyboard(String mytext, int maxSize, String msg) {
     /* Down Btn to move in X axis (to the right) */
     if(checkNextPress())
     {
+    #if defined(T_EMBED)
+      // To handle Encoder devices such as T-EMBED
+      if(digitalRead(BK_BTN) == BTN_ACT) { y++; }
+      else x++;
+
+      if(y>3) { y=-1; }
+      else if(y<-1) y=3;
+
+    #else
       delay(200);
       if(checkNextPress()) { x--; delay(250); } // Long Press
       else x++; // Short Press
-
+    #endif
       if(y<0 && x>3) x=0;
       if(x>11) x=0;
       else if (x<0) x=11;
@@ -711,11 +816,21 @@ String keyboard(String mytext, int maxSize, String msg) {
     }
     /* UP Btn to move in Y axis (Downwards) */
     if(checkPrevPress()) {
-      delay(200);
+    #if defined(T_EMBED)
+      // To handle Encoder devices such as T-EMBED
+      if(digitalRead(BK_BTN) == BTN_ACT) { y--; }
+      else x--;
 
+      if(y<0 && x<0) x=3;
+      if(x>11) x=0;
+      else if (x<0) x=11;
+      
+      // To handle Encoder devices such as T-EMBED
+    #else       
+      delay(200);
       if(checkPrevPress()) { y--; delay(250);  }// Long press
       else y++; // short press
-
+    #endif
       if(y>3) { y=-1; }
       else if(y<-1) y=3;
       redraw = true;
@@ -726,7 +841,7 @@ String keyboard(String mytext, int maxSize, String msg) {
   }
 
   //Resets screen when finished writing
-  tft.fillRect(0,0,WIDTH,HEIGHT,BGCOLOR);
+  tft.fillRect(0,0,WIDTH,HEIGHT,bruceConfig.bgColor);
   resetTftDisplay();
 
   return mytext;
